@@ -51,8 +51,8 @@ extension NSColor {
 }
 
 func showNotification(title: String, subtitle: String, informativeText: String, terminalBundleID: String, iconPath: String = "") {
-    // Play Glass sound
-    if let sound = NSSound(named: "Glass") {
+    // Play Ping sound
+    if let sound = NSSound(named: "Ping") {
         sound.play()
     }
 
