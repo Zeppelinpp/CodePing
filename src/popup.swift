@@ -1,5 +1,6 @@
 import Cocoa
 import AppKit
+import CoreAudio
 
 class HoverView: NSView {
     var onMouseEntered: (() -> Void)?
@@ -50,9 +51,50 @@ extension NSColor {
     static let nord8 = NSColor(red: 0.533, green: 0.753, blue: 0.816, alpha: 1.0)  // #88C0D0
 }
 
+func currentSystemOutputVolume() -> Float {
+    var defaultOutputDeviceID = AudioObjectID()
+    var propertySize = UInt32(MemoryLayout<AudioObjectID>.size)
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+
+    var result = AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        0,
+        nil,
+        &propertySize,
+        &defaultOutputDeviceID
+    )
+
+    guard result == noErr else { return 1.0 }
+
+    var volume: Float = 1.0
+    propertySize = UInt32(MemoryLayout<Float>.size)
+    address = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyVolumeScalar,
+        mScope: kAudioObjectPropertyScopeOutput,
+        mElement: kAudioObjectPropertyElementMain
+    )
+
+    result = AudioObjectGetPropertyData(
+        defaultOutputDeviceID,
+        &address,
+        0,
+        nil,
+        &propertySize,
+        &volume
+    )
+
+    return result == noErr ? max(0.0, min(1.0, volume)) : 1.0
+}
+
 func showNotification(title: String, subtitle: String, informativeText: String, terminalBundleID: String, iconPath: String = "") {
-    // Play Ping sound
+    // Play Ping sound at the current system output volume
     if let sound = NSSound(named: "Ping") {
+        sound.volume = currentSystemOutputVolume()
         sound.play()
     }
 
