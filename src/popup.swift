@@ -1,6 +1,5 @@
 import Cocoa
 import AppKit
-import CoreAudio
 
 class HoverView: NSView {
     var onMouseEntered: (() -> Void)?
@@ -52,43 +51,28 @@ extension NSColor {
 }
 
 func currentSystemOutputVolume() -> Float {
-    var defaultOutputDeviceID = AudioObjectID()
-    var propertySize = UInt32(MemoryLayout<AudioObjectID>.size)
-    var address = AudioObjectPropertyAddress(
-        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain
-    )
+    let task = Process()
+    task.launchPath = "/usr/bin/osascript"
+    task.arguments = ["-e", "output volume of (get volume settings)"]
 
-    var result = AudioObjectGetPropertyData(
-        AudioObjectID(kAudioObjectSystemObject),
-        &address,
-        0,
-        nil,
-        &propertySize,
-        &defaultOutputDeviceID
-    )
+    let outputPipe = Pipe()
+    task.standardOutput = outputPipe
+    task.standardError = Pipe()
 
-    guard result == noErr else { return 1.0 }
+    do {
+        try task.run()
+        task.waitUntilExit()
+    } catch {
+        return 1.0
+    }
 
-    var volume: Float = 1.0
-    propertySize = UInt32(MemoryLayout<Float>.size)
-    address = AudioObjectPropertyAddress(
-        mSelector: kAudioDevicePropertyVolumeScalar,
-        mScope: kAudioObjectPropertyScopeOutput,
-        mElement: kAudioObjectPropertyElementMain
-    )
+    let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+    guard let str = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+          let volume = Float(str) else {
+        return 1.0
+    }
 
-    result = AudioObjectGetPropertyData(
-        defaultOutputDeviceID,
-        &address,
-        0,
-        nil,
-        &propertySize,
-        &volume
-    )
-
-    return result == noErr ? max(0.0, min(1.0, volume)) : 1.0
+    return max(0.0, min(1.0, volume / 100.0))
 }
 
 func showNotification(title: String, subtitle: String, informativeText: String, terminalBundleID: String, iconPath: String = "") {
