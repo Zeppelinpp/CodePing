@@ -1,5 +1,6 @@
 import Cocoa
 import AppKit
+import AVFoundation
 
 class HoverView: NSView {
     var onMouseEntered: (() -> Void)?
@@ -50,10 +51,12 @@ extension NSColor {
     static let nord8 = NSColor(red: 0.533, green: 0.753, blue: 0.816, alpha: 1.0)  // #88C0D0
 }
 
-func currentSystemOutputVolume() -> Float {
+private var audioPlayer: AVAudioPlayer?
+
+func volumeFromAppleScript(_ script: String) -> Float? {
     let task = Process()
     task.launchPath = "/usr/bin/osascript"
-    task.arguments = ["-e", "output volume of (get volume settings)"]
+    task.arguments = ["-e", script]
 
     let outputPipe = Pipe()
     task.standardOutput = outputPipe
@@ -63,24 +66,53 @@ func currentSystemOutputVolume() -> Float {
         try task.run()
         task.waitUntilExit()
     } catch {
-        return 1.0
+        return nil
     }
 
     let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
     guard let str = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
           let volume = Float(str) else {
-        return 1.0
+        return nil
     }
 
-    return max(0.0, min(1.0, volume / 100.0))
+    return volume
+}
+
+func notificationSoundVolume() -> Float {
+    if let env = ProcessInfo.processInfo.environment["CLAUDE_NOTIFIER_VOLUME"],
+       let volume = Float(env) {
+        return max(0.0, min(1.0, volume))
+    }
+
+    if let volume = volumeFromAppleScript("output volume of (get volume settings)") {
+        return max(0.0, min(1.0, volume / 100.0))
+    }
+
+    // Default to a moderate level when the system volume cannot be read
+    // (common with external displays, headphones, or audio interfaces).
+    return 0.3
+}
+
+func playNotificationSound(volume: Float) {
+    let soundURL = URL(fileURLWithPath: "/System/Library/Sounds/Ping.aiff")
+    do {
+        let player = try AVAudioPlayer(contentsOf: soundURL)
+        player.volume = max(0.0, min(1.0, volume))
+        player.prepareToPlay()
+        player.play()
+        audioPlayer = player
+    } catch {
+        // Fallback to NSSound if AVAudioPlayer fails
+        if let sound = NSSound(named: "Ping") {
+            sound.volume = max(0.0, min(1.0, volume))
+            sound.play()
+        }
+    }
 }
 
 func showNotification(title: String, subtitle: String, informativeText: String, terminalBundleID: String, iconPath: String = "") {
-    // Play Ping sound at the current system output volume
-    if let sound = NSSound(named: "Ping") {
-        sound.volume = currentSystemOutputVolume()
-        sound.play()
-    }
+    // Play Ping sound at a volume that follows system settings
+    playNotificationSound(volume: notificationSoundVolume())
 
     // Determine screen based on mouse position
     let mouseLoc = NSEvent.mouseLocation
