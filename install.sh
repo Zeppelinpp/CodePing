@@ -39,6 +39,25 @@ for arg in "$@"; do
     esac
 done
 
+is_plugin_enabled() {
+    local plugin_id="codeping@zeppelinpp"
+    if [ ! -f "$SETTINGS" ]; then
+        return 1
+    fi
+    python3 -c "
+import json, sys
+try:
+    with open('$SETTINGS', 'r') as f:
+        data = json.load(f)
+except (json.JSONDecodeError, FileNotFoundError):
+    sys.exit(1)
+plugins = data.get('enabledPlugins', {})
+if plugins.get('$plugin_id', False):
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null
+}
+
 # --- Uninstall mode: clean legacy settings.json hook ---
 if [ "$UNINSTALL" = true ]; then
     echo "Removing legacy hook from $SETTINGS ..."
@@ -222,15 +241,20 @@ if [[ "$SAVE_FOR_PLUGIN" == [yY]* ]]; then
 fi
 
 # 4. Configure legacy settings.json hook (for non-plugin users)
-echo ""
-echo "Checking Claude Code settings.json ..."
+if is_plugin_enabled; then
+    echo ""
+    echo "Plugin codeping@zeppelinpp is enabled — skipping legacy Stop hook."
+    echo "The plugin's own hook in hooks/hooks.json will handle notifications."
+else
+    echo ""
+    echo "Checking Claude Code settings.json ..."
 
-if [ ! -f "$SETTINGS" ]; then
-    mkdir -p "$(dirname "$SETTINGS")"
-    echo '{}' > "$SETTINGS"
-fi
+    if [ ! -f "$SETTINGS" ]; then
+        mkdir -p "$(dirname "$SETTINGS")"
+        echo '{}' > "$SETTINGS"
+    fi
 
-python3 -c "
+    python3 -c "
 import json, sys, os
 
 settings_path = '$SETTINGS'
@@ -286,17 +310,25 @@ else:
     print('Added legacy Stop hook to settings.json.')
     print('Tip: Consider using the plugin (/plugin install) instead of the legacy hook.')
 "
+fi
 
 echo ""
 echo "======================================"
 echo "  Installation complete!"
 echo "======================================"
 echo ""
-echo "Next steps:"
-echo "  1. In Claude Code, run: /hooks"
-echo "  2. Trigger a Stop event and enjoy."
-echo ""
-echo "For plugin mode (recommended):"
-echo "  ./install.sh --uninstall   # remove legacy hook"
-echo "  Then use /plugin install in Claude Code"
+if is_plugin_enabled; then
+    echo "Plugin mode is active. The legacy Stop hook was skipped."
+    echo "Notifications are handled by the plugin's hooks/hooks.json."
+    echo ""
+    echo "Next step: trigger a Stop event and enjoy."
+else
+    echo "Next steps:"
+    echo "  1. In Claude Code, run: /hooks"
+    echo "  2. Trigger a Stop event and enjoy."
+    echo ""
+    echo "For plugin mode (recommended):"
+    echo "  ./install.sh --uninstall   # remove legacy hook"
+    echo "  Then use /plugin install in Claude Code"
+fi
 echo ""
