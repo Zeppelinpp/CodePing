@@ -250,11 +250,13 @@ if [ -n "$BARK_KEY" ] && [ "$BARK_KEY" != "your-bark-key-here" ]; then
     "$(printf '%s' "$message" | json_escape)" \
     "$(printf '%s' "$cwd" | json_escape)" \
     "$(printf '%s' "$BARK_ICON_URL" | json_escape)")
-  curl -fsS -m 10 \
-    -H 'Content-Type: application/json' \
-    -d "$bark_payload" \
-    https://api.day.app/push >/tmp/codeping-bark.log 2>&1 || {
-      echo "[CodePing] Bark push failed for ${CLI_NAME}. Key: ${BARK_KEY:0:8}..., cwd: ${cwd}" >&2
-      cat /tmp/codeping-bark.log >&2
-    }
+  # Fire-and-forget: don't let network latency or failures block the hook.
+  (
+    curl -fsS -m 10 \
+      -H 'Content-Type: application/json' \
+      -d "$bark_payload" \
+      https://api.day.app/push >/tmp/codeping-bark.log 2>&1 || {
+        echo "[CodePing] Bark push failed for ${CLI_NAME}. Key: ${BARK_KEY:0:8}..., cwd: ${cwd}" >>/tmp/codeping-bark.log 2>&1
+      }
+  ) </dev/null >/dev/null 2>&1 &
 fi
